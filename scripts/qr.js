@@ -66,6 +66,7 @@ async function main() {
 
   // صفحة HTML فيها الباركود جاهزة للطباعة أو العرض على الشاشة
   const dataUrl = await QRCode.toDataURL(url, { width: 640, margin: 2, color: { dark: '#33241D', light: '#FFF8EC' } });
+  const STAMP = new Date().toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' });
   const html = `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <title>افتح يا سمسم — باركود اللعبة</title>
@@ -87,9 +88,19 @@ async function main() {
   a.btn small{display:block;font-weight:600;font-size:12px;opacity:.9;margin-top:3px;
               word-break:break-all;direction:ltr}
   .note{margin-top:16px;font-size:12px;color:#8A6350;line-height:1.8}
+  .status{margin-bottom:14px;border-radius:14px;padding:11px 14px;font-weight:800;
+          font-size:14px;line-height:1.6}
+  .checking{background:#E4D6BE;color:#5A3B2E}
+  .live{background:#5BC55F;color:#fff}
+  .stale{background:#F2544B;color:#fff}
+  .stale b{display:block;font-size:13px;font-weight:600;margin-top:4px}
+  .stamp{margin-top:10px;font-size:11px;color:#B0A18C}
 </style></head><body>
 <div class="card">
   <h1>افتح يا سمسم</h1><h2>OPEN SESAME</h2>
+
+  <div id="status" class="status checking">⏳ نفحص إذا كان الباركود صالحاً…</div>
+
   <img src="${dataUrl}" alt="QR">
   <p>امسح الباركود بتطبيق <b>Expo Go</b><br>أو اضغط أحد الروابط تحت</p>
 
@@ -101,9 +112,42 @@ async function main() {
 
   <div class="note">
     رابط Expo Go يشتغل من الجوال فقط.<br>
-    لازم يكون <b>npx expo start</b> شغّالاً.
+    لازم يكون السيرفر شغّالاً والجوال على نفس الواي فاي.
   </div>
-</div></body></html>`;
+  <div class="stamp">وُلّد هذا الباركود: ${STAMP}</div>
+</div>
+
+<script>
+// نفحص إن كان السيرفر المذكور في الباركود لا يزال يستجيب.
+// إذا ما استجاب، معناه أن الباركود قديم (تغيّر الواي فاي أو توقّف السيرفر).
+(function () {
+  var box = document.getElementById('status');
+  var probe = ${webUrl ? JSON.stringify(webUrl + '/status') : 'null'};
+  if (!probe) { box.remove(); return; }
+
+  var done = false;
+  function verdict(ok) {
+    if (done) return;
+    done = true;
+    if (ok) {
+      box.className = 'status live';
+      box.textContent = '✅ الباركود صالح — السيرفر يستجيب. امسحه الآن.';
+    } else {
+      box.className = 'status stale';
+      box.innerHTML = '⚠️ هذا الباركود قديم ولن يعمل' +
+        '<b>شغّل اختصار «Open Sesame - Start» من سطح المكتب لتوليد باركود جديد.</b>';
+    }
+  }
+
+  // مهلة قصوى حتى لا تبقى الرسالة معلّقة
+  setTimeout(function () { verdict(false); }, 6000);
+
+  fetch(probe, { mode: 'no-cors', cache: 'no-store' })
+    .then(function () { verdict(true); })
+    .catch(function () { verdict(false); });
+})();
+</script>
+</body></html>`;
   fs.writeFileSync(path.join(ROOT, 'qr.html'), html, 'utf8');
 
   console.log('  Saved:');

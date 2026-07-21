@@ -1,0 +1,33 @@
+{
+  "name": "افتح يا سمسم — لعبة الأسئلة",
+  "short_name": "افتح يا سمسم",
+  "description": "لعبة أسئلة ثنائية اللغة بنظام كاهوت وتصميم افتح يا سمسم",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#63C7F2",
+  "theme_color": "#F2544B",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
