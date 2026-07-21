@@ -9,6 +9,7 @@ import {
   Easing,
   Modal,
   ScrollView,
+  ActivityIndicator,
   Dimensions,
 } from 'react-native';
 import Backdrop from '../components/Backdrop';
@@ -16,6 +17,7 @@ import Puppet from '../components/Puppet';
 import Shape from '../components/Shape';
 import FeltButton from '../components/FeltButton';
 import { buildRound } from '../data';
+import { fetchApiQuestions } from '../api';
 import { fx, play } from '../sound';
 import { useLang } from '../i18n';
 import { colors, radius, answerStyles, levelStyles, MAX_POINTS } from '../theme';
@@ -51,12 +53,46 @@ export default function RoundScreen({
   const { rounds, perRound, seconds } = setup;
   const totalMs = seconds * 1000;
 
+  // البنك المحلي جاهز فوراً — نستخدمه كمصدر أساسي أو كبديل عند فشل الشبكة
   const built = useMemo(
     () => buildRound(category.id, level, seen, perRound),
     [category.id, level, seen, perRound]
   );
-  const questions = built.round;
+
+  const wantsApi = setup.source === 'api';
+  // 'loading' | 'ready' | 'error' — البنك المحلي لا يحتاج تحميلاً
+  const [load, setLoad] = useState(wantsApi ? 'loading' : 'ready');
+  const [apiError, setApiError] = useState(null);
+  const [apiQuestions, setApiQuestions] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+
+  const usingApi = wantsApi && !!apiQuestions;
+  const questions = usingApi ? apiQuestions : built.round;
   const roundSize = questions.length;
+
+  // جلب الأسئلة من الخدمة عند اختيار المصدر الحيّ
+  useEffect(() => {
+    if (!wantsApi) return undefined;
+    let alive = true;
+    setLoad('loading');
+    setApiError(null);
+
+    fetchApiQuestions({ categoryId: category.id, level, amount: perRound })
+      .then((qs) => {
+        if (!alive) return;
+        setApiQuestions(qs);
+        setLoad('ready');
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setApiError(e);
+        setLoad('error');
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [wantsApi, category.id, level, perRound, attempt]);
 
   // نقاط الفرق تراكمية عبر المباراة — تصلنا من App وتعود إليه
   const [teams, setTeams] = useState(incomingTeams);
@@ -85,7 +121,8 @@ export default function RoundScreen({
   const [tick, setTick] = useState(seconds);
 
   useEffect(() => {
-    if (phase !== 'ready') return undefined;
+    // لا يبدأ العدّ التنازلي قبل أن تجهز الأسئلة
+    if (load !== 'ready' || phase !== 'ready') return undefined;
     if (countdown <= 0) {
       fx('go', 'medium');
       setPhase('question');
@@ -94,7 +131,7 @@ export default function RoundScreen({
     play('count');
     const id = setTimeout(() => setCountdown((c) => c - 1), 800);
     return () => clearTimeout(id);
-  }, [phase, countdown]);
+  }, [load, phase, countdown]);
 
   useEffect(() => {
     if (phase !== 'question') return undefined;
@@ -181,7 +218,10 @@ export default function RoundScreen({
   function endRound(endedEarly) {
     onFinish({
       teams,
-      keys: built.keys.slice(0, endedEarly ? qIndex + (phase === 'reveal' ? 1 : 0) : roundSize),
+      // أسئلة الخدمة ليست من البنك المحلي، فلا نسجّلها في قائمة «المطروحة»
+      keys: usingApi
+        ? []
+        : built.keys.slice(0, endedEarly ? qIndex + (phase === 'reveal' ? 1 : 0) : roundSize),
       didReset: built.didReset,
       endedEarly: !!endedEarly,
       answered: endedEarly ? qIndex + (phase === 'reveal' ? 1 : 0) : roundSize,
@@ -206,6 +246,81 @@ export default function RoundScreen({
   const lvl = levelStyles[level] || levelStyles.mixed;
   const tint = isTeamMode ? active.color : category.color;
 
+  /* ---------- حالة الانتظار: الأسئلة في الطريق ---------- */
+  if (load === 'loading') {
+    return (
+      <Backdrop tint={category.color} scene="strip">
+        <SafeAreaView style={styles.centerWrap}>
+          <View style={styles.plateSmall}>
+            <Text style={styles.plateSmallText}>{t.roundSetupTitle(roundIndex + 1, rounds)}</Text>
+          </View>
+          <Puppet
+            type={category.puppet}
+            size={110}
+            color={colors.cream}
+            deep={colors.stoneDeep}
+            mood="think"
+          />
+          <ActivityIndicator size="large" color={colors.white} />
+          <Text style={styles.bigWhite}>{t.loadingQuestions}</Text>
+          <Text style={styles.subWhite}>{t.loadingFrom}</Text>
+        </SafeAreaView>
+      </Backdrop>
+    );
+  }
+
+  /* ---------- حالة الخطأ: نشرح السبب ونعطي مخرجين ---------- */
+  if (load === 'error') {
+    const kind = apiError?.kind || 'server';
+    const title = { network: t.errNetwork, rate: t.errRate, empty: t.errEmpty, server: t.errServer, bad: t.errBad }[kind];
+    const hint = { network: t.errNetworkHint, rate: t.errRateHint, empty: t.errEmptyHint, server: t.errServerHint, bad: t.errBadHint }[kind];
+
+    return (
+      <Backdrop tint={colors.tomato} scene="strip">
+        <SafeAreaView style={styles.centerWrap}>
+          <Puppet type="grouch" size={104} color={colors.grass} deep={colors.grassDeep} mood="sad" />
+          <View style={styles.errCard}>
+            <Text style={styles.errTitle}>{title}</Text>
+            <Text style={styles.errHint}>{hint}</Text>
+          </View>
+
+          <FeltButton
+            label={t.retry}
+            size="lg"
+            isRTL={isRTL}
+            color={colors.sun}
+            deep={colors.sunDeep}
+            onPress={() => setAttempt((a) => a + 1)}
+            style={{ minWidth: 230 }}
+          />
+          {/* مخرج مضمون: البنك المحلي جاهز دائماً */}
+          <FeltButton
+            label={`📚 ${t.useLocalInstead}`}
+            isRTL={isRTL}
+            color={colors.white}
+            deep={colors.stoneDeep}
+            onPress={() => {
+              setApiQuestions(null);
+              setApiError(null);
+              setLoad('ready');
+            }}
+            style={{ minWidth: 230 }}
+          />
+          <FeltButton
+            label={t.goHome}
+            isRTL={isRTL}
+            size="sm"
+            color={colors.grape}
+            deep={colors.grapeDeep}
+            textColor={colors.white}
+            onPress={onQuit}
+            style={{ minWidth: 150 }}
+          />
+        </SafeAreaView>
+      </Backdrop>
+    );
+  }
+
   /* ---------- شاشة استعد ---------- */
   if (phase === 'ready') {
     return (
@@ -220,6 +335,13 @@ export default function RoundScreen({
               {category.emoji} {category[lang]} · {lvl.emoji} {levelLabel(t, level)}
             </Text>
           </View>
+
+          {/* نوضّح أن أسئلة هذه الجولة جاءت من الإنترنت */}
+          {usingApi && (
+            <View style={styles.apiPill}>
+              <Text style={styles.apiPillText}>{t.apiBadge}</Text>
+            </View>
+          )}
 
           {isTeamMode && (
             <View style={[styles.turnBanner, { backgroundColor: active.deep }]}>
@@ -257,8 +379,9 @@ export default function RoundScreen({
               {t.roundSetupTitle(roundIndex + 1, rounds)} · {qIndex + 1}/{roundSize}
             </Text>
           </View>
-          <View style={[styles.hudChip, { backgroundColor: category.deep }]}>
+          <View style={[styles.hudChip, { backgroundColor: usingApi ? colors.ocean : category.deep }]}>
             <Text style={[styles.hudText, { color: colors.white }]}>
+              {usingApi ? '📡 ' : ''}
               {category.emoji} {lvl.emoji}
             </Text>
           </View>
@@ -525,6 +648,29 @@ const styles = StyleSheet.create({
 
   topicPill: { borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 7 },
   topicText: { color: colors.white, fontWeight: '900', fontSize: 14 },
+
+  apiPill: {
+    backgroundColor: colors.ocean,
+    borderRadius: radius.pill,
+    paddingHorizontal: 13,
+    paddingVertical: 5,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.oceanDeep,
+  },
+  apiPillText: { color: colors.white, fontWeight: '900', fontSize: 12 },
+
+  errCard: {
+    backgroundColor: colors.cream,
+    borderRadius: radius.lg,
+    borderBottomWidth: 8,
+    borderBottomColor: colors.stoneDeep,
+    padding: 18,
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+  },
+  errTitle: { fontSize: 20, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  errHint: { fontSize: 14, fontWeight: '700', color: colors.cocoaSoft, textAlign: 'center', lineHeight: 21 },
 
   turnBanner: { borderRadius: radius.pill, paddingHorizontal: 20, paddingVertical: 9 },
   turnText: { color: colors.white, fontWeight: '900', fontSize: 17 },

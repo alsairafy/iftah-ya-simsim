@@ -58,8 +58,14 @@ export default function SetupScreen({ teams, onStart, onBack }) {
   const [rounds, setRounds] = useState(DEFAULT_SETUP.rounds);
   const [perRound, setPerRound] = useState(DEFAULT_SETUP.perRound);
   const [seconds, setSeconds] = useState(DEFAULT_SETUP.seconds);
+  const [source, setSource] = useState('local'); // 'local' | 'api'
 
   const total = rounds * perRound;
+
+  const SOURCES = [
+    { id: 'local', icon: '📚', title: t.sourceLocal, hint: t.sourceLocalHint, color: colors.grass, deep: colors.grassDeep },
+    { id: 'api', icon: '📡', title: t.sourceApi, hint: t.sourceApiHint, color: colors.ocean, deep: colors.oceanDeep },
+  ];
 
   return (
     <Backdrop tint={colors.grape} scene="strip">
@@ -83,6 +89,43 @@ export default function SetupScreen({ teams, onStart, onBack }) {
               </Text>
               <Text style={[styles.summarySub, { textAlign: t.align }]}>🎲 {t.variedRoundsHint}</Text>
             </View>
+          </View>
+
+          {/* مصدر الأسئلة */}
+          <View style={styles.card}>
+            <Text style={[styles.optionLabel, { textAlign: t.align }]}>📖 {t.questionSource}</Text>
+            {SOURCES.map((s) => {
+              const on = source === s.id;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPressIn={() => fx('tap', 'light')}
+                  onPress={() => setSource(s.id)}
+                  style={({ pressed }) => [
+                    styles.sourceRow,
+                    {
+                      backgroundColor: on ? s.color : colors.white,
+                      borderBottomColor: on ? s.deep : colors.stoneDeep,
+                      borderBottomWidth: pressed ? 2 : 5,
+                      transform: [{ translateY: pressed ? 3 : 0 }],
+                      flexDirection: t.row,
+                    },
+                  ]}
+                >
+                  <Text style={styles.sourceIcon}>{s.icon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sourceTitle, { textAlign: t.align }]}>{s.title}</Text>
+                    <Text
+                      style={[styles.sourceHint, { textAlign: t.align, color: on ? colors.cream : colors.cocoaSoft }]}
+                    >
+                      {s.hint}
+                    </Text>
+                  </View>
+                  {on && <Text style={styles.sourceCheck}>✓</Text>}
+                </Pressable>
+              );
+            })}
+            {source === 'api' && <Text style={styles.apiNote}>{t.apiEnglishNote}</Text>}
           </View>
 
           <View style={styles.card}>
@@ -129,7 +172,7 @@ export default function SetupScreen({ teams, onStart, onBack }) {
             isRTL={isRTL}
             color={colors.sun}
             deep={colors.sunDeep}
-            onPress={() => onStart({ rounds, perRound, seconds })}
+            onPress={() => onStart({ rounds, perRound, seconds, source })}
             style={{ marginTop: 14, alignSelf: 'center', minWidth: 230 }}
           />
           <View style={{ height: 60 }} />
@@ -192,4 +235,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.stoneDeep,
   },
   totalText: { fontSize: 14, fontWeight: '900', color: colors.ink },
+
+  sourceRow: { borderRadius: radius.md, padding: 11, alignItems: 'center', gap: 10 },
+  sourceIcon: { fontSize: 22 },
+  sourceTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  sourceHint: { fontSize: 11, fontWeight: '700', marginTop: 2, lineHeight: 16 },
+  sourceCheck: { fontSize: 19, fontWeight: '900', color: colors.white },
+  apiNote: { fontSize: 11, fontWeight: '800', color: colors.tomatoDeep, textAlign: 'center' },
 });
