@@ -112,6 +112,11 @@ export const STRINGS = {
     backHomeBody: 'نقاط المباراة كلها ستضيع.',
     continuePlaying: 'أكمل اللعب',
     confirm: 'نعم، تأكيد',
+    endMatch: 'إنهاء المباراة',
+    endMatchHint: 'أوقف هنا واعرض النتيجة النهائية',
+    endMatchConfirm: 'تنهي المباراة الآن؟',
+    endMatchBody: 'ستظهر لك النتيجة النهائية بالجولات التي لعبتها، ونقاطك محفوظة.',
+    goHome: 'الرئيسية',
 
     /* النهاية */
     matchOver: 'انتهت المباراة!',
@@ -246,6 +251,11 @@ export const STRINGS = {
     backHomeBody: 'All match points will be lost.',
     continuePlaying: 'Keep playing',
     confirm: 'Yes, confirm',
+    endMatch: 'End the match',
+    endMatchHint: 'Stop here and see the final result',
+    endMatchConfirm: 'End the match now?',
+    endMatchBody: 'You’ll see the final result for the rounds you played, with your points kept.',
+    goHome: 'Home',
 
     matchOver: 'Match over!',
     finalResult: 'Final result',

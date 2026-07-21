@@ -7,7 +7,7 @@ import { fx } from '../sound';
 import { useLang } from '../i18n';
 import { colors, radius, levelStyles } from '../theme';
 
-export default function LevelScreen({ category, onPick, onBack, seen, roundIndex, rounds }) {
+export default function LevelScreen({ category, onPick, onBack, onHome, seen, roundIndex, rounds }) {
   const { t, lang } = useLang();
   const perRound = typeof roundIndex === 'number';
 
@@ -28,7 +28,13 @@ export default function LevelScreen({ category, onPick, onBack, seen, roundIndex
           <View style={styles.plate}>
             <Text style={styles.plateText}>{perRound ? t.chooseRoundLevel : t.chooseLevel}</Text>
           </View>
-          <View style={{ width: 78 }} />
+          {onHome ? (
+            <Pressable onPress={onHome} onPressIn={() => fx('tap', 'light')} style={styles.home} hitSlop={12}>
+              <Text style={styles.homeText}>{t.goHome}</Text>
+            </Pressable>
+          ) : (
+            <View style={{ width: 78 }} />
+          )}
         </View>
 
         {perRound && (
@@ -154,6 +160,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.9,
   },
+  home: {
+    width: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderRadius: radius.pill,
+    paddingVertical: 7,
+    borderBottomWidth: 4,
+    borderBottomColor: colors.stoneDeep,
+  },
+  homeText: { fontSize: 13, fontWeight: '900', color: colors.tomatoDeep },
+
   roundBanner: {
     alignSelf: 'center',
     backgroundColor: colors.ink,

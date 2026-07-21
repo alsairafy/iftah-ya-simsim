@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, Modal } from 'react-native';
 import Backdrop from '../components/Backdrop';
 import Puppet from '../components/Puppet';
 import FeltButton from '../components/FeltButton';
@@ -24,8 +24,10 @@ export default function RoundBreakScreen({
   roundSize,
   isLast,
   onNext,
+  onEndMatch,
 }) {
   const { t, isRTL, lang } = useLang();
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const isTeamMode = teams.length > 1;
   const lvl = levelStyles[level] || levelStyles.mixed;
 
@@ -106,9 +108,58 @@ export default function RoundBreakScreen({
             onPress={onNext}
             style={{ minWidth: 240, marginTop: 6 }}
           />
+
+          {/* إنهاء المباراة مبكراً — يعرض النتيجة النهائية لما لُعب */}
+          {!isLast && (
+            <FeltButton
+              isRTL={isRTL}
+              color={colors.white}
+              deep={colors.stoneDeep}
+              onPress={() => setConfirmEnd(true)}
+              style={{ minWidth: 240 }}
+            >
+              <View>
+                <Text style={styles.endText}>🏁  {t.endMatch}</Text>
+                <Text style={styles.endHint}>{t.endMatchHint}</Text>
+              </View>
+            </FeltButton>
+          )}
+
           <View style={{ height: 30 }} />
         </ScrollView>
       </SafeAreaView>
+
+      <Modal visible={confirmEnd} transparent animationType="fade" onRequestClose={() => setConfirmEnd(false)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <Puppet type="grouch" size={72} color={colors.grape} deep={colors.grapeDeep} mood="sad" />
+            <Text style={styles.modalTitle}>{t.endMatchConfirm}</Text>
+            <Text style={styles.modalBody}>{t.endMatchBody}</Text>
+            <View style={[styles.modalRow, { flexDirection: t.row }]}>
+              <FeltButton
+                label={t.setupNextRound}
+                isRTL={isRTL}
+                color={colors.grass}
+                deep={colors.grassDeep}
+                textColor={colors.white}
+                onPress={() => setConfirmEnd(false)}
+                style={{ flex: 1 }}
+              />
+              <FeltButton
+                label={t.confirm}
+                isRTL={isRTL}
+                color={colors.white}
+                deep={colors.stoneDeep}
+                onPress={() => {
+                  setConfirmEnd(false);
+                  onEndMatch();
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Backdrop>
   );
 }
@@ -151,4 +202,34 @@ const styles = StyleSheet.create({
   leadNote: { fontSize: 14, fontWeight: '900', color: colors.grapeDeep, textAlign: 'center' },
 
   hint: { fontSize: 13, fontWeight: '800', color: colors.white, textAlign: 'center', opacity: 0.95 },
+
+  endText: { fontSize: 16, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  endHint: { fontSize: 11, fontWeight: '700', color: colors.cocoaSoft, textAlign: 'center', marginTop: 2 },
+
+  modalWrap: {
+    flex: 1,
+    backgroundColor: 'rgba(51,36,29,0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 26,
+  },
+  modalCard: {
+    backgroundColor: colors.cream,
+    borderRadius: radius.lg,
+    borderBottomWidth: 8,
+    borderBottomColor: colors.stoneDeep,
+    padding: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalTitle: { fontSize: 21, fontWeight: '900', color: colors.ink, marginTop: 8, textAlign: 'center' },
+  modalBody: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.cocoaSoft,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  modalRow: { gap: 10, marginTop: 16, width: '100%' },
 });

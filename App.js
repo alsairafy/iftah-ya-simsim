@@ -108,6 +108,11 @@ function Game() {
     setScreen('roundCategory');
   }
 
+  // إنهاء المباراة مبكراً: نعرض النتيجة لما لُعب فعلاً بدل إهدارها
+  function endMatchEarly() {
+    finishMatch();
+  }
+
   function finishMatch() {
     const isTeamMode = teams.length > 1;
     const beat = !isTeamMode && teams[0].score > best;
@@ -175,6 +180,7 @@ function Game() {
           rounds={setup.rounds}
           usedCategories={usedCategories}
           onBack={roundIndex === 0 ? () => setScreen('setup') : () => setScreen('roundBreak')}
+          onHome={roundIndex > 0 ? endMatchEarly : goHome}
           onPick={(c) => {
             setCategory(c);
             setScreen('roundLevel');
@@ -190,6 +196,7 @@ function Game() {
           roundIndex={roundIndex}
           rounds={setup.rounds}
           onBack={() => setScreen('roundCategory')}
+          onHome={roundIndex > 0 ? endMatchEarly : goHome}
           onPick={(lv) => {
             setLevel(lv);
             setRunId((n) => n + 1);
@@ -224,6 +231,7 @@ function Game() {
           roundSize={lastRound.roundSize}
           isLast={roundIndex + 1 >= setup.rounds}
           onNext={afterBreak}
+          onEndMatch={endMatchEarly}
         />
       )}
 
