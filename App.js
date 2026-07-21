@@ -7,28 +7,48 @@ import { initSound, setSoundEnabled, setMusicEnabled, playMusic } from './src/so
 import LanguageScreen from './src/screens/LanguageScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ModeScreen from './src/screens/ModeScreen';
+import SetupScreen from './src/screens/SetupScreen';
 import CategoryScreen from './src/screens/CategoryScreen';
 import LevelScreen from './src/screens/LevelScreen';
-import SetupScreen from './src/screens/SetupScreen';
-import MatchScreen from './src/screens/MatchScreen';
+import RoundScreen from './src/screens/RoundScreen';
+import RoundBreakScreen from './src/screens/RoundBreakScreen';
 import ResultScreen from './src/screens/ResultScreen';
-import { colors, DEFAULT_SETUP } from './src/theme';
+import { colors, DEFAULT_SETUP, TEAM_STYLES } from './src/theme';
+
+// حالة فريق واحد عند بداية المباراة
+const makeTeam = (name, i) => ({
+  name,
+  score: 0, // مجموع المباراة كلها
+  roundScore: 0, // نقاط الجولة الحالية فقط
+  correct: 0,
+  asked: 0,
+  streak: 0,
+  bestStreak: 0,
+  ...TEAM_STYLES[i],
+});
 
 function Game() {
-  const { chosen, chooseLang } = useLang();
+  const { chosen, chooseLang, t } = useLang();
 
-  // language → home → mode → categories → levels → setup → match → result
+  // home → mode → setup → roundCategory → roundLevel → round → roundBreak → … → result
   const [screen, setScreen] = useState('home');
+
   const [teamNames, setTeamNames] = useState(null); // null = لاعب واحد
-  const [category, setCategory] = useState(null);
-  const [level, setLevel] = useState('mixed');
   const [setup, setSetup] = useState(DEFAULT_SETUP);
+
+  const [teams, setTeams] = useState([]);
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [history, setHistory] = useState([]); // {category, level} لكل جولة انتهت
+  const [category, setCategory] = useState(null); // باب الجولة الحالية
+  const [level, setLevel] = useState('mixed'); // مستوى الجولة الحالية
+  const [lastRound, setLastRound] = useState(null); // نتيجة آخر جولة للعرض
+
   const [result, setResult] = useState(null);
   const [best, setBest] = useState(0);
   const [isBest, setIsBest] = useState(false);
-  // مفاتيح الأسئلة التي طُرحت — تمنع التكرار بين المباريات
   const [seen, setSeen] = useState(() => new Set());
   const [runId, setRunId] = useState(0);
+
   const [soundOn, setSoundOn] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
 
@@ -36,48 +56,79 @@ function Game() {
     initSound();
   }, []);
 
-  // موسيقى مرحة أثناء المباراة، وهادئة في بقية الشاشات
   useEffect(() => {
     if (!chosen) return;
-    playMusic(screen === 'match' ? 'game' : 'menu');
+    playMusic(screen === 'round' ? 'game' : 'menu');
   }, [screen, chosen]);
 
   function toggleSound(next) {
     setSoundOn(next);
     setSoundEnabled(next);
   }
-
   function toggleMusic(next) {
     setMusicOn(next);
     setMusicEnabled(next);
   }
 
+  /* ---------- بدء مباراة جديدة ---------- */
   function startMatch(cfg) {
     setSetup(cfg);
-    setRunId((n) => n + 1);
-    setScreen('match');
+    setTeams((teamNames || [t.soloMode]).map(makeTeam));
+    setRoundIndex(0);
+    setHistory([]);
+    setLastRound(null);
+    setScreen('roundCategory');
   }
 
-  function replay() {
-    setRunId((n) => n + 1);
-    setScreen('match');
-  }
-
-  function finish(r) {
+  /* ---------- انتهت جولة ---------- */
+  function finishRound(r) {
+    // نسجّل الأسئلة المطروحة حتى لا تتكرر
     setSeen((prev) => {
       const next = r.didReset ? new Set() : new Set(prev);
       r.keys.forEach((k) => next.add(k));
       return next;
     });
-    // الرقم القياسي لوضع اللاعب الواحد فقط
-    const beat = !r.isTeamMode && r.teams[0].score > best;
+
+    setTeams(r.teams);
+    setHistory((h) => [...h, { category, level, answered: r.answered, roundSize: r.roundSize }]);
+    setLastRound({ ...r, category, level });
+    setScreen('roundBreak');
+  }
+
+  /* ---------- بعد شاشة الملخّص ---------- */
+  function afterBreak() {
+    const isLast = roundIndex + 1 >= setup.rounds;
+    if (isLast) {
+      finishMatch();
+      return;
+    }
+    // نصفّر نقاط الجولة ونجهّز الجولة التالية
+    setTeams((prev) => prev.map((tm) => ({ ...tm, roundScore: 0, streak: 0 })));
+    setRoundIndex((i) => i + 1);
+    setScreen('roundCategory');
+  }
+
+  function finishMatch() {
+    const isTeamMode = teams.length > 1;
+    const beat = !isTeamMode && teams[0].score > best;
     setIsBest(beat);
-    if (beat) setBest(r.teams[0].score);
-    setResult(r);
+    if (beat) setBest(teams[0].score);
+    setResult({
+      teams,
+      isTeamMode,
+      history,
+      totalQ: teams.reduce((n, tm) => n + tm.asked, 0),
+      didReset: false,
+    });
     setScreen('result');
   }
 
-  // شاشة اختيار اللغة تسبق كل شيء
+  function goHome() {
+    setScreen('home');
+  }
+
+  const usedCategories = history.map((h) => h.category.id);
+
   if (!chosen) {
     return (
       <View style={styles.root}>
@@ -104,58 +155,75 @@ function Game() {
 
       {screen === 'mode' && (
         <ModeScreen
-          onBack={() => setScreen('home')}
+          onBack={goHome}
           onPick={({ mode, names }) => {
             setTeamNames(mode === 'teams' ? names : null);
-            setScreen('categories');
-          }}
-        />
-      )}
-
-      {screen === 'categories' && (
-        <CategoryScreen
-          seen={seen}
-          onBack={() => setScreen('mode')}
-          onPick={(c) => {
-            setCategory(c);
-            setScreen('levels');
-          }}
-        />
-      )}
-
-      {screen === 'levels' && (
-        <LevelScreen
-          category={category}
-          seen={seen}
-          onBack={() => setScreen('categories')}
-          onPick={(lv) => {
-            setLevel(lv);
             setScreen('setup');
           }}
         />
       )}
 
       {screen === 'setup' && (
-        <SetupScreen
-          category={category}
-          level={level}
-          teams={teamNames}
+        <SetupScreen teams={teamNames} onBack={() => setScreen('mode')} onStart={startMatch} />
+      )}
+
+      {/* اختيار باب الجولة الحالية */}
+      {screen === 'roundCategory' && (
+        <CategoryScreen
           seen={seen}
-          onBack={() => setScreen('levels')}
-          onStart={startMatch}
+          roundIndex={roundIndex}
+          rounds={setup.rounds}
+          usedCategories={usedCategories}
+          onBack={roundIndex === 0 ? () => setScreen('setup') : () => setScreen('roundBreak')}
+          onPick={(c) => {
+            setCategory(c);
+            setScreen('roundLevel');
+          }}
         />
       )}
 
-      {screen === 'match' && (
-        <MatchScreen
+      {/* اختيار مستوى الجولة الحالية */}
+      {screen === 'roundLevel' && (
+        <LevelScreen
+          category={category}
+          seen={seen}
+          roundIndex={roundIndex}
+          rounds={setup.rounds}
+          onBack={() => setScreen('roundCategory')}
+          onPick={(lv) => {
+            setLevel(lv);
+            setRunId((n) => n + 1);
+            setScreen('round');
+          }}
+        />
+      )}
+
+      {screen === 'round' && (
+        <RoundScreen
           key={runId}
           category={category}
           level={level}
           setup={setup}
-          teamNames={teamNames}
+          roundIndex={roundIndex}
+          teams={teams}
           seen={seen}
-          onFinish={finish}
-          onQuit={() => setScreen('home')}
+          onFinish={finishRound}
+          onQuit={goHome}
+        />
+      )}
+
+      {screen === 'roundBreak' && lastRound && (
+        <RoundBreakScreen
+          teams={teams}
+          roundIndex={roundIndex}
+          rounds={setup.rounds}
+          category={lastRound.category}
+          level={lastRound.level}
+          endedEarly={lastRound.endedEarly}
+          answered={lastRound.answered}
+          roundSize={lastRound.roundSize}
+          isLast={roundIndex + 1 >= setup.rounds}
+          onNext={afterBreak}
         />
       )}
 
@@ -164,8 +232,8 @@ function Game() {
           result={result}
           category={category}
           isBest={isBest}
-          onReplay={replay}
-          onHome={() => setScreen('home')}
+          onReplay={() => startMatch(setup)}
+          onHome={goHome}
         />
       )}
     </View>

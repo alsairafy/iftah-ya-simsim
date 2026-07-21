@@ -18,7 +18,7 @@ import FeltButton from '../components/FeltButton';
 import { buildRound } from '../data';
 import { fx, play } from '../sound';
 import { useLang } from '../i18n';
-import { colors, radius, answerStyles, levelStyles, TEAM_STYLES, MAX_POINTS } from '../theme';
+import { colors, radius, answerStyles, levelStyles, MAX_POINTS } from '../theme';
 
 const { height: H } = Dimensions.get('window');
 
@@ -31,56 +31,53 @@ function pointsFor(msLeft, totalMs) {
   return Math.round((0.5 + ratio * 0.5) * MAX_POINTS);
 }
 
-export default function MatchScreen({ category, level, setup, teamNames, seen, onFinish, onQuit }) {
+/**
+ * تلعب جولة واحدة فقط (باب ومستوى محدّدان)، ثم تُعيد النتيجة إلى App
+ * الذي يتولّى الانتقال لإعداد الجولة التالية.
+ *
+ * onFinish({ teams, keys, didReset, endedEarly })
+ */
+export default function RoundScreen({
+  category,
+  level,
+  setup,
+  roundIndex,
+  teams: incomingTeams,
+  seen,
+  onFinish,
+  onQuit,
+}) {
   const { t, lang, isRTL } = useLang();
   const { rounds, perRound, seconds } = setup;
-  const totalQ = rounds * perRound;
   const totalMs = seconds * 1000;
 
   const built = useMemo(
-    () => buildRound(category.id, level, seen, totalQ),
-    [category.id, level, seen, totalQ]
+    () => buildRound(category.id, level, seen, perRound),
+    [category.id, level, seen, perRound]
   );
   const questions = built.round;
+  const roundSize = questions.length;
 
-  // قد يكون بنك الفئة/المستوى أصغر مما طلبه اللاعب، فنعتمد العدد الفعلي
-  // حتى تكون أرقام «الجولة س من ص» و«سؤال س من ص» صادقة دائماً.
-  const realTotal = questions.length;
-  const realRounds = Math.max(1, Math.ceil(realTotal / perRound));
-
-  // الفريقان (أو لاعب واحد)
-  const [teams, setTeams] = useState(() =>
-    (teamNames || [null]).map((name, i) => ({
-      name: name || t.soloMode,
-      score: 0,
-      correct: 0,
-      asked: 0, // كم سؤالاً واجه هذا الفريق فعلاً (قد يختلف عند العدد الفردي)
-      streak: 0,
-      bestStreak: 0,
-      ...TEAM_STYLES[i],
-    }))
-  );
+  // نقاط الفرق تراكمية عبر المباراة — تصلنا من App وتعود إليه
+  const [teams, setTeams] = useState(incomingTeams);
   const isTeamMode = teams.length > 1;
 
   const [qIndex, setQIndex] = useState(0);
-  const [phase, setPhase] = useState('ready'); // ready | question | reveal | roundbreak
+  const [phase, setPhase] = useState('ready'); // ready | question | reveal
   const [countdown, setCountdown] = useState(3);
   const [picked, setPicked] = useState(null);
   const [gained, setGained] = useState(0);
-  const [confirmQuit, setConfirmQuit] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [confirm, setConfirm] = useState(null); // null | 'end' | 'home'
 
-  const round = Math.floor(qIndex / perRound); // 0-based
-  const inRound = qIndex % perRound; // 0-based
-  // عدد أسئلة هذه الجولة تحديداً (الجولة الأخيرة قد تكون أقصر)
-  const roundSize = Math.min(perRound, realTotal - round * perRound);
-  const activeIdx = isTeamMode ? qIndex % 2 : 0;
+  // يتناوب الفريق البادئ كل جولة حتى لا يبدأ فريق واحد دائماً
+  const activeIdx = isTeamMode ? (roundIndex + qIndex) % 2 : 0;
   const active = teams[activeIdx];
 
   const q = questions[qIndex];
   const text = q ? q[lang] : null;
   const isCorrect = picked === q?.answer;
-  const lastOfRound = inRound + 1 >= roundSize;
-  const lastOfMatch = qIndex + 1 >= realTotal;
+  const lastOfRound = qIndex + 1 >= roundSize;
 
   /* ---------- المؤقّت ---------- */
   const timer = useRef(new Animated.Value(1)).current;
@@ -139,7 +136,6 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
     const msLeft = Math.max(0, deadline.current - Date.now());
     const right = choice === q.answer;
 
-    // تُحسب قبل التحديث حتى تُعرض النقاط المكتسبة فوراً
     const nextStreak = active.streak + 1;
     const earned = right
       ? pointsFor(msLeft, totalMs) + (nextStreak >= 3 ? 200 : nextStreak === 2 ? 100 : 0)
@@ -152,6 +148,7 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
         return {
           ...tm,
           score: tm.score + earned,
+          roundScore: tm.roundScore + earned,
           correct: tm.correct + 1,
           asked: tm.asked + 1,
           streak: nextStreak,
@@ -180,19 +177,23 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
     Animated.spring(pointsPop, { toValue: 1, useNativeDriver: true, speed: 6, bounciness: 14 }).start();
   }
 
-  function advance() {
-    if (lastOfMatch) {
-      onFinish({ teams, isTeamMode, totalQ: questions.length, keys: built.keys, didReset: built.didReset });
-      return;
-    }
-    if (lastOfRound) {
-      setPhase('roundbreak');
-      return;
-    }
-    nextQuestion();
+  // تنتهي الجولة: إمّا بإكمال الأسئلة أو بإنهائها مبكراً من القائمة
+  function endRound(endedEarly) {
+    onFinish({
+      teams,
+      keys: built.keys.slice(0, endedEarly ? qIndex + (phase === 'reveal' ? 1 : 0) : roundSize),
+      didReset: built.didReset,
+      endedEarly: !!endedEarly,
+      answered: endedEarly ? qIndex + (phase === 'reveal' ? 1 : 0) : roundSize,
+      roundSize,
+    });
   }
 
-  function nextQuestion() {
+  function advance() {
+    if (lastOfRound) {
+      endRound(false);
+      return;
+    }
     setQIndex((i) => i + 1);
     setPicked(null);
     setGained(0);
@@ -202,16 +203,22 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
 
   const translateX = shake.interpolate({ inputRange: [-1, 1], outputRange: [-10, 10] });
   const timerWidth = timer.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
-  const lvl = levelStyles[q?.level] || levelStyles.mixed;
+  const lvl = levelStyles[level] || levelStyles.mixed;
   const tint = isTeamMode ? active.color : category.color;
 
-  /* ---------- استعد ---------- */
+  /* ---------- شاشة استعد ---------- */
   if (phase === 'ready') {
     return (
       <Backdrop tint={tint} scene="strip">
         <SafeAreaView style={styles.centerWrap}>
           <View style={styles.plateSmall}>
-            <Text style={styles.plateSmallText}>{t.roundOf(round + 1, realRounds)}</Text>
+            <Text style={styles.plateSmallText}>{t.roundSetupTitle(roundIndex + 1, rounds)}</Text>
+          </View>
+
+          <View style={[styles.topicPill, { backgroundColor: category.deep }]}>
+            <Text style={styles.topicText}>
+              {category.emoji} {category[lang]} · {lvl.emoji} {levelLabel(t, level)}
+            </Text>
           </View>
 
           {isTeamMode && (
@@ -222,54 +229,14 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
 
           <Puppet
             type={isTeamMode ? active.puppet : category.puppet}
-            size={126}
+            size={120}
             color={colors.cream}
             deep={colors.stoneDeep}
             mood="happy"
           />
           <Text style={styles.bigWhite}>{t.getReady}</Text>
           <CountBubble value={countdown} />
-          <Text style={styles.subWhite}>{t.questionOf(inRound + 1, roundSize)}</Text>
-        </SafeAreaView>
-      </Backdrop>
-    );
-  }
-
-  /* ---------- نهاية الجولة ---------- */
-  if (phase === 'roundbreak') {
-    const sorted = [...teams].sort((a, b) => b.score - a.score);
-    const lead = isTeamMode && sorted[0].score !== sorted[1].score ? sorted[0] : null;
-
-    return (
-      <Backdrop tint={colors.grape} scene="strip">
-        <SafeAreaView style={styles.centerWrap}>
-          <View style={styles.plateSmall}>
-            <Text style={styles.plateSmallText}>
-              {t.roundOver} · {t.roundOf(round + 1, realRounds)}
-            </Text>
-          </View>
-
-          <View style={styles.boardCard}>
-            <Text style={styles.boardHeading}>{t.standings}</Text>
-            {teams.map((tm, i) => (
-              <TeamRow key={i} team={tm} row={t.row} align={t.align} isTeamMode={isTeamMode} t={t} />
-            ))}
-            {isTeamMode && (
-              <Text style={styles.leadNote}>
-                {lead ? `${lead.emoji} ${lead.name} ${t.leading}` : `🤝 ${t.tied}`}
-              </Text>
-            )}
-          </View>
-
-          <FeltButton
-            label={t.nextRound}
-            size="lg"
-            isRTL={isRTL}
-            color={colors.sun}
-            deep={colors.sunDeep}
-            onPress={nextQuestion}
-            style={{ minWidth: 230 }}
-          />
+          <Text style={styles.subWhite}>{t.questionOf(qIndex + 1, roundSize)}</Text>
         </SafeAreaView>
       </Backdrop>
     );
@@ -281,22 +248,23 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
   return (
     <Backdrop tint={tint} scene="strip">
       <SafeAreaView style={{ flex: 1 }}>
-        {/* الشريط العلوي */}
         <View style={[styles.hud, { flexDirection: t.row }]}>
-          <Pressable onPress={() => setConfirmQuit(true)} style={styles.quit} hitSlop={12}>
-            <Text style={styles.quitText}>✕</Text>
+          <Pressable onPress={() => setMenu(true)} style={styles.quit} hitSlop={12}>
+            <Text style={styles.quitText}>☰</Text>
           </Pressable>
           <View style={styles.hudChip}>
             <Text style={styles.hudText}>
-              {t.roundOf(round + 1, realRounds)} · {inRound + 1}/{roundSize}
+              {t.roundSetupTitle(roundIndex + 1, rounds)} · {qIndex + 1}/{roundSize}
             </Text>
           </View>
-          <View style={[styles.hudChip, { backgroundColor: colors.ink }]}>
-            <Text style={[styles.hudText, { color: colors.white }]}>{lvl.emoji} {levelLabel(t, q.level)}</Text>
+          <View style={[styles.hudChip, { backgroundColor: category.deep }]}>
+            <Text style={[styles.hudText, { color: colors.white }]}>
+              {category.emoji} {lvl.emoji}
+            </Text>
           </View>
         </View>
 
-        {/* نقاط الفريقين */}
+        {/* نقاط الفرق */}
         <View style={[styles.scoreStrip, { flexDirection: t.row }]}>
           {teams.map((tm, i) => (
             <View
@@ -321,12 +289,15 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
           ))}
         </View>
 
-        {/* شريط الوقت */}
         <View style={styles.timerTrack}>
           <Animated.View
             style={[
               styles.timerFill,
-              { width: timerWidth, backgroundColor: tick > seconds * 0.4 ? colors.grass : tick > seconds * 0.18 ? colors.sun : colors.tomato },
+              {
+                width: timerWidth,
+                backgroundColor:
+                  tick > seconds * 0.4 ? colors.grass : tick > seconds * 0.18 ? colors.sun : colors.tomato,
+              },
             ]}
           />
         </View>
@@ -419,7 +390,7 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
               {isCorrect ? text.f : `${t.theAnswerIs}: ${text.o[q.answer]}`}
             </Text>
             <FeltButton
-              label={lastOfMatch ? t.seeResult : lastOfRound ? t.roundOver : t.next}
+              label={lastOfRound ? t.roundOver : t.next}
               isRTL={isRTL}
               size="sm"
               color={colors.white}
@@ -431,28 +402,95 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
         )}
       </SafeAreaView>
 
-      <Modal visible={confirmQuit} transparent animationType="fade" onRequestClose={() => setConfirmQuit(false)}>
+      {/* ---------- قائمة الإيقاف ---------- */}
+      <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
-            <Puppet type="grouch" size={76} color={colors.grass} deep={colors.grassDeep} mood="sad" />
-            <Text style={styles.modalTitle}>{t.quitTitle}</Text>
-            <Text style={styles.modalBody}>{t.quitBody}</Text>
+            <Text style={styles.modalTitle}>{t.pauseTitle}</Text>
+
+            <FeltButton
+              isRTL={isRTL}
+              color={colors.sun}
+              deep={colors.sunDeep}
+              onPress={() => setMenu(false)}
+              style={{ width: '100%', marginTop: 14 }}
+            >
+              <Text style={styles.menuBtnText}>▶️  {t.continuePlaying}</Text>
+            </FeltButton>
+
+            <FeltButton
+              isRTL={isRTL}
+              color={colors.grape}
+              deep={colors.grapeDeep}
+              onPress={() => {
+                setMenu(false);
+                setConfirm('end');
+              }}
+              style={{ width: '100%', marginTop: 10 }}
+            >
+              <View>
+                <Text style={[styles.menuBtnText, { color: colors.white }]}>🏁  {t.endRound}</Text>
+                <Text style={styles.menuBtnHint}>{t.endRoundHint}</Text>
+              </View>
+            </FeltButton>
+
+            <FeltButton
+              isRTL={isRTL}
+              color={colors.white}
+              deep={colors.stoneDeep}
+              onPress={() => {
+                setMenu(false);
+                setConfirm('home');
+              }}
+              style={{ width: '100%', marginTop: 10 }}
+            >
+              <View>
+                <Text style={styles.menuBtnText}>🏠  {t.backHome}</Text>
+                <Text style={[styles.menuBtnHint, { color: colors.cocoaSoft }]}>{t.backHomeHint}</Text>
+              </View>
+            </FeltButton>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------- تأكيد ---------- */}
+      <Modal visible={!!confirm} transparent animationType="fade" onRequestClose={() => setConfirm(null)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <Puppet
+              type="grouch"
+              size={72}
+              color={confirm === 'end' ? colors.grape : colors.grass}
+              deep={confirm === 'end' ? colors.grapeDeep : colors.grassDeep}
+              mood="sad"
+            />
+            <Text style={styles.modalTitle}>
+              {confirm === 'end' ? t.endRoundConfirm : t.backHomeConfirm}
+            </Text>
+            <Text style={styles.modalBody}>
+              {confirm === 'end' ? t.endRoundBody : t.backHomeBody}
+            </Text>
             <View style={[styles.modalRow, { flexDirection: t.row }]}>
               <FeltButton
-                label={t.quitNo}
+                label={t.continuePlaying}
                 isRTL={isRTL}
                 color={colors.grass}
                 deep={colors.grassDeep}
                 textColor={colors.white}
-                onPress={() => setConfirmQuit(false)}
+                onPress={() => setConfirm(null)}
                 style={{ flex: 1 }}
               />
               <FeltButton
-                label={t.quitYes}
+                label={t.confirm}
                 isRTL={isRTL}
                 color={colors.white}
                 deep={colors.stoneDeep}
-                onPress={onQuit}
+                onPress={() => {
+                  const what = confirm;
+                  setConfirm(null);
+                  if (what === 'end') endRound(true);
+                  else onQuit();
+                }}
                 style={{ flex: 1 }}
               />
             </View>
@@ -462,8 +500,6 @@ export default function MatchScreen({ category, level, setup, teamNames, seen, o
     </Backdrop>
   );
 }
-
-/* ---------- عناصر مساعدة ---------- */
 
 function CountBubble({ value }) {
   const pop = useRef(new Animated.Value(0)).current;
@@ -479,82 +515,44 @@ function CountBubble({ value }) {
   );
 }
 
-function TeamRow({ team, row, align, isTeamMode, t }) {
-  return (
-    <View style={[styles.teamRow, { flexDirection: row, borderBottomColor: team.deep }]}>
-      <View style={[styles.teamDot, { backgroundColor: team.color }]} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.teamName, { textAlign: align }]} numberOfLines={1}>
-          {isTeamMode ? `${team.emoji} ${team.name}` : t.totalScore}
-        </Text>
-        <Text style={[styles.teamMeta, { textAlign: align }]}>
-          ✓ {team.correct} · 🔥 {team.bestStreak}
-        </Text>
-      </View>
-      <Text style={styles.teamScore}>{team.score}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 13, paddingHorizontal: 20 },
-  bigWhite: { fontSize: 28, fontWeight: '900', color: colors.white },
+  centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 11, paddingHorizontal: 20 },
+  bigWhite: { fontSize: 27, fontWeight: '900', color: colors.white },
   subWhite: { fontSize: 14, fontWeight: '800', color: colors.cream, opacity: 0.92 },
 
   plateSmall: { backgroundColor: colors.ink, borderRadius: radius.pill, paddingHorizontal: 18, paddingVertical: 7 },
   plateSmallText: { color: colors.white, fontWeight: '900', fontSize: 14 },
 
+  topicPill: { borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 7 },
+  topicText: { color: colors.white, fontWeight: '900', fontSize: 14 },
+
   turnBanner: { borderRadius: radius.pill, paddingHorizontal: 20, paddingVertical: 9 },
-  turnText: { color: colors.white, fontWeight: '900', fontSize: 18 },
+  turnText: { color: colors.white, fontWeight: '900', fontSize: 17 },
 
   countBubble: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 8,
     borderBottomColor: colors.stoneDeep,
   },
-  countText: { fontSize: 48, fontWeight: '900', color: colors.ink },
-
-  boardCard: {
-    backgroundColor: colors.cream,
-    borderRadius: radius.lg,
-    borderBottomWidth: 8,
-    borderBottomColor: colors.stoneDeep,
-    padding: 16,
-    width: '100%',
-    gap: 10,
-  },
-  boardHeading: { fontSize: 19, fontWeight: '900', color: colors.ink, textAlign: 'center' },
-  teamRow: {
-    alignItems: 'center',
-    gap: 11,
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    padding: 11,
-    borderBottomWidth: 5,
-  },
-  teamDot: { width: 24, height: 24, borderRadius: 12 },
-  teamName: { fontSize: 16, fontWeight: '900', color: colors.ink },
-  teamMeta: { fontSize: 12, fontWeight: '700', color: colors.cocoaSoft, marginTop: 1 },
-  teamScore: { fontSize: 24, fontWeight: '900', color: colors.ink },
-  leadNote: { fontSize: 14, fontWeight: '900', color: colors.grapeDeep, textAlign: 'center' },
+  countText: { fontSize: 46, fontWeight: '900', color: colors.ink },
 
   hud: { alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 8 },
   quit: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 4,
     borderBottomColor: colors.stoneDeep,
   },
-  quitText: { fontSize: 16, fontWeight: '900', color: colors.ink },
+  quitText: { fontSize: 17, fontWeight: '900', color: colors.ink },
   hudChip: {
     backgroundColor: colors.white,
     borderRadius: radius.pill,
@@ -666,17 +664,19 @@ const styles = StyleSheet.create({
   revealPoints: { color: colors.white, fontWeight: '900', fontSize: 21 },
   revealFact: { color: colors.cream, fontWeight: '700', fontSize: 14, lineHeight: 21, marginTop: 4 },
 
-  modalWrap: { flex: 1, backgroundColor: 'rgba(51,36,29,0.65)', alignItems: 'center', justifyContent: 'center', padding: 26 },
+  modalWrap: { flex: 1, backgroundColor: 'rgba(51,36,29,0.68)', alignItems: 'center', justifyContent: 'center', padding: 26 },
   modalCard: {
     backgroundColor: colors.cream,
     borderRadius: radius.lg,
     borderBottomWidth: 8,
     borderBottomColor: colors.stoneDeep,
-    padding: 22,
+    padding: 20,
     width: '100%',
     alignItems: 'center',
   },
-  modalTitle: { fontSize: 21, fontWeight: '900', color: colors.ink, marginTop: 8 },
-  modalBody: { fontSize: 14, fontWeight: '700', color: colors.cocoaSoft, marginTop: 6, textAlign: 'center' },
+  modalTitle: { fontSize: 21, fontWeight: '900', color: colors.ink, marginTop: 8, textAlign: 'center' },
+  modalBody: { fontSize: 14, fontWeight: '700', color: colors.cocoaSoft, marginTop: 6, textAlign: 'center', lineHeight: 21 },
   modalRow: { gap: 10, marginTop: 16, width: '100%' },
+  menuBtnText: { fontSize: 17, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  menuBtnHint: { fontSize: 12, fontWeight: '700', color: colors.cream, textAlign: 'center', marginTop: 2, opacity: 0.95 },
 });

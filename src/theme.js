@@ -63,11 +63,12 @@ export const felt = (deep, size = 6) => ({
 export const MAX_POINTS = 1000;
 
 // إعدادات المباراة — الخيارات المتاحة والقيم الافتراضية
-export const ROUND_OPTIONS = [2, 3, 5];
+export const ROUND_OPTIONS = [3, 6, 9];
 export const PER_ROUND_OPTIONS = [4, 6, 8];
 export const TIME_OPTIONS = [10, 20, 30];
 
-export const DEFAULT_SETUP = { rounds: 3, perRound: 6, seconds: 20 };
+// المباراة الافتراضية: ٦ جولات × ٦ أسئلة، لكل جولة بابها ومستواها
+export const DEFAULT_SETUP = { rounds: 6, perRound: 6, seconds: 20 };
 
 // ألوان الفريقين
 export const TEAM_STYLES = [

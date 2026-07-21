@@ -7,8 +7,9 @@ import { fx } from '../sound';
 import { useLang } from '../i18n';
 import { colors, radius, levelStyles } from '../theme';
 
-export default function LevelScreen({ category, onPick, onBack, seen }) {
+export default function LevelScreen({ category, onPick, onBack, seen, roundIndex, rounds }) {
   const { t, lang } = useLang();
+  const perRound = typeof roundIndex === 'number';
 
   const options = [
     { id: 'easy', name: t.levelEasy, hint: t.levelEasyHint },
@@ -25,10 +26,16 @@ export default function LevelScreen({ category, onPick, onBack, seen }) {
             <Text style={styles.backText}>{t.back}</Text>
           </Pressable>
           <View style={styles.plate}>
-            <Text style={styles.plateText}>{t.chooseLevel}</Text>
+            <Text style={styles.plateText}>{perRound ? t.chooseRoundLevel : t.chooseLevel}</Text>
           </View>
           <View style={{ width: 78 }} />
         </View>
+
+        {perRound && (
+          <View style={styles.roundBanner}>
+            <Text style={styles.roundBannerText}>{t.roundSetupTitle(roundIndex + 1, rounds)}</Text>
+          </View>
+        )}
 
         <View style={styles.hero}>
           <Puppet type={category.puppet} size={92} color={colors.cream} deep={colors.stoneDeep} mood="think" />
@@ -147,4 +154,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.9,
   },
+  roundBanner: {
+    alignSelf: 'center',
+    backgroundColor: colors.ink,
+    borderRadius: radius.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  roundBannerText: { color: colors.white, fontWeight: '900', fontSize: 13 },
 });

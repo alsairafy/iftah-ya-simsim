@@ -7,8 +7,9 @@ import { fx } from '../sound';
 import { useLang } from '../i18n';
 import { colors, radius } from '../theme';
 
-export default function CategoryScreen({ onPick, onBack, seen }) {
+export default function CategoryScreen({ onPick, onBack, seen, roundIndex, rounds, usedCategories = [] }) {
   const { t, lang } = useLang();
+  const perRound = typeof roundIndex === 'number'; // نحن نجهّز جولة محدّدة
 
   return (
     <Backdrop tint={colors.skyDeep} scene="strip">
@@ -18,10 +19,16 @@ export default function CategoryScreen({ onPick, onBack, seen }) {
             <Text style={styles.backText}>{t.back}</Text>
           </Pressable>
           <View style={styles.plate}>
-            <Text style={styles.plateText}>{t.chooseCategory}</Text>
+            <Text style={styles.plateText}>{perRound ? t.chooseRoundCategory : t.chooseCategory}</Text>
           </View>
           <View style={{ width: 78 }} />
         </View>
+
+        {perRound && (
+          <View style={styles.roundBanner}>
+            <Text style={styles.roundBannerText}>{t.roundSetupTitle(roundIndex + 1, rounds)}</Text>
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
           {categories.map((c) => {
@@ -49,6 +56,12 @@ export default function CategoryScreen({ onPick, onBack, seen }) {
                 <View style={styles.countPill}>
                   <Text style={styles.countText}>{left}</Text>
                 </View>
+                {/* علامة على الأبواب التي لُعبت في جولة سابقة */}
+                {usedCategories.includes(c.id) && (
+                  <View style={styles.usedTag}>
+                    <Text style={styles.usedText}>✓ {t.alreadyPlayed}</Text>
+                  </View>
+                )}
               </Pressable>
             );
           })}
@@ -119,4 +132,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   countText: { fontSize: 12, fontWeight: '900', color: colors.ink },
+
+  roundBanner: {
+    alignSelf: 'center',
+    backgroundColor: colors.ink,
+    borderRadius: radius.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  roundBannerText: { color: colors.white, fontWeight: '900', fontSize: 13 },
+
+  usedTag: {
+    position: 'absolute',
+    bottom: 8,
+    backgroundColor: 'rgba(51,36,29,0.72)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+  },
+  usedText: { fontSize: 10, fontWeight: '900', color: colors.white },
 });

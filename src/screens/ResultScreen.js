@@ -5,7 +5,7 @@ import Puppet from '../components/Puppet';
 import FeltButton from '../components/FeltButton';
 import { fx, duckMusic } from '../sound';
 import { useLang } from '../i18n';
-import { colors, radius } from '../theme';
+import { colors, radius, levelStyles } from '../theme';
 
 const { height: H } = Dimensions.get('window');
 
@@ -58,8 +58,8 @@ function Confetti({ index }) {
 }
 
 export default function ResultScreen({ result, category, onReplay, onHome, isBest }) {
-  const { t, isRTL } = useLang();
-  const { teams, isTeamMode, totalQ, didReset } = result;
+  const { t, isRTL, lang } = useLang();
+  const { teams, isTeamMode, totalQ, didReset, history = [] } = result;
 
   // وضع الفريقين: نحدّد الفائز. وضع اللاعب الواحد: نجوم حسب الدقة.
   const sorted = [...teams].sort((a, b) => b.score - a.score);
@@ -177,6 +177,34 @@ export default function ResultScreen({ result, category, onReplay, onHome, isBes
             {didReset && <Text style={styles.resetNote}>{t.poolReset}</Text>}
           </View>
 
+          {/* سجلّ الجولات: أي باب ومستوى لُعب في كل جولة */}
+          {history.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardHeading}>🎲 {t.roundsDone(history.length, history.length)}</Text>
+              {history.map((h, i) => {
+                const lvl = levelStyles[h.level] || levelStyles.mixed;
+                const lvlName =
+                  { easy: t.levelEasy, medium: t.levelMedium, hard: t.levelHard }[h.level] ||
+                  t.mixedLevels;
+                return (
+                  <View key={i} style={[styles.historyRow, { flexDirection: t.row }]}>
+                    <View style={[styles.historyNum, { backgroundColor: h.category.color }]}>
+                      <Text style={styles.historyNumText}>{i + 1}</Text>
+                    </View>
+                    <Text style={[styles.historyText, { textAlign: t.align }]} numberOfLines={1}>
+                      {h.category.emoji} {h.category[lang]}
+                    </Text>
+                    <View style={[styles.historyLvl, { backgroundColor: lvl.color }]}>
+                      <Text style={styles.historyLvlText}>
+                        {lvl.emoji} {lvlName}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           <View style={[styles.actions, { flexDirection: t.row }]}>
             <FeltButton
               label={t.playAgain}
@@ -272,5 +300,20 @@ const styles = StyleSheet.create({
   teamScore: { fontSize: 23, fontWeight: '900', color: colors.ink },
 
   resetNote: { fontSize: 12, fontWeight: '900', color: colors.grassDeep, textAlign: 'center' },
+
+  historyRow: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: colors.white,
+    borderRadius: radius.sm,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  historyNum: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  historyNumText: { fontSize: 12, fontWeight: '900', color: colors.white },
+  historyText: { flex: 1, fontSize: 13, fontWeight: '800', color: colors.ink },
+  historyLvl: { borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
+  historyLvlText: { fontSize: 10, fontWeight: '900', color: colors.ink },
   actions: { gap: 11, width: '100%', marginTop: 4 },
 });

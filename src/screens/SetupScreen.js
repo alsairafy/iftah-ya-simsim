@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView } from 'rea
 import Backdrop from '../components/Backdrop';
 import Puppet from '../components/Puppet';
 import FeltButton from '../components/FeltButton';
-import { remainingCount, poolSize } from '../data';
 import { useLang } from '../i18n';
 import { fx } from '../sound';
 import {
@@ -50,21 +49,20 @@ function OptionRow({ label, options, value, onChange, suffix, row, align, accent
   );
 }
 
-export default function SetupScreen({ category, level, teams, onStart, onBack, seen }) {
-  const { t, isRTL, lang } = useLang();
+/**
+ * إعدادات المباراة العامة فقط.
+ * الباب والمستوى يُختاران قبل كل جولة على حدة.
+ */
+export default function SetupScreen({ teams, onStart, onBack }) {
+  const { t, isRTL } = useLang();
   const [rounds, setRounds] = useState(DEFAULT_SETUP.rounds);
   const [perRound, setPerRound] = useState(DEFAULT_SETUP.perRound);
   const [seconds, setSeconds] = useState(DEFAULT_SETUP.seconds);
 
-  const requested = rounds * perRound;
-  const capacity = poolSize(category.id, level); // كل أسئلة هذه الفئة والمستوى
-  const available = remainingCount(category.id, level, seen); // الجديدة منها فقط
-  // لا يمكن أن تتجاوز المباراة حجم البنك — نعرض العدد الحقيقي لا الموعود
-  const total = Math.min(requested, capacity);
-  const capped = total < requested;
+  const total = rounds * perRound;
 
   return (
-    <Backdrop tint={category.color} scene="strip">
+    <Backdrop tint={colors.grape} scene="strip">
       <SafeAreaView style={{ flex: 1 }}>
         <View style={[styles.header, { flexDirection: t.row }]}>
           <Pressable onPress={onBack} onPressIn={() => fx('tap', 'light')} style={styles.back} hitSlop={12}>
@@ -77,16 +75,13 @@ export default function SetupScreen({ category, level, teams, onStart, onBack, s
         </View>
 
         <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          {/* ملخّص الاختيار */}
           <View style={[styles.summary, { flexDirection: t.row }]}>
-            <Puppet type={category.puppet} size={56} color={colors.cream} deep={colors.stoneDeep} mood="think" />
+            <Puppet type="bird" size={52} color={colors.sun} deep={colors.sunDeep} mood="happy" />
             <View style={{ flex: 1 }}>
               <Text style={[styles.summaryTitle, { textAlign: t.align }]}>
-                {category.emoji} {category[lang]}
-              </Text>
-              <Text style={[styles.summarySub, { textAlign: t.align }]}>
                 {teams ? `👥 ${teams[0]} · ${teams[1]}` : `👤 ${t.soloMode}`}
               </Text>
+              <Text style={[styles.summarySub, { textAlign: t.align }]}>🎲 {t.variedRoundsHint}</Text>
             </View>
           </View>
 
@@ -128,11 +123,6 @@ export default function SetupScreen({ category, level, teams, onStart, onBack, s
             <Text style={styles.totalText}>📚 {t.totalQuestionsLabel(total)}</Text>
           </View>
 
-          {capped && <Text style={[styles.warn, { writingDirection: t.dir }]}>{t.poolCapped(capacity)}</Text>}
-          {!capped && total > available && (
-            <Text style={[styles.warn, { writingDirection: t.dir }]}>{t.poolReset}</Text>
-          )}
-
           <FeltButton
             label={t.startMatch}
             size="lg"
@@ -140,7 +130,7 @@ export default function SetupScreen({ category, level, teams, onStart, onBack, s
             color={colors.sun}
             deep={colors.sunDeep}
             onPress={() => onStart({ rounds, perRound, seconds })}
-            style={{ marginTop: 16, alignSelf: 'center', minWidth: 230 }}
+            style={{ marginTop: 14, alignSelf: 'center', minWidth: 230 }}
           />
           <View style={{ height: 60 }} />
         </ScrollView>
@@ -174,15 +164,9 @@ const styles = StyleSheet.create({
 
   body: { paddingHorizontal: 18, paddingTop: 14, gap: 13 },
 
-  summary: {
-    backgroundColor: colors.ink,
-    borderRadius: radius.lg,
-    padding: 11,
-    alignItems: 'center',
-    gap: 10,
-  },
-  summaryTitle: { fontSize: 17, fontWeight: '900', color: colors.white },
-  summarySub: { fontSize: 13, fontWeight: '700', color: colors.sand, marginTop: 2 },
+  summary: { backgroundColor: colors.ink, borderRadius: radius.lg, padding: 11, alignItems: 'center', gap: 10 },
+  summaryTitle: { fontSize: 16, fontWeight: '900', color: colors.white },
+  summarySub: { fontSize: 12, fontWeight: '700', color: colors.sand, marginTop: 3, lineHeight: 17 },
 
   card: {
     backgroundColor: colors.cream,
@@ -195,12 +179,7 @@ const styles = StyleSheet.create({
   optionBlock: { gap: 8 },
   optionLabel: { fontSize: 16, fontWeight: '900', color: colors.ink },
   optionRow: { gap: 9 },
-  pill: {
-    flex: 1,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
+  pill: { flex: 1, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
   pillText: { fontSize: 18, fontWeight: '900', color: colors.ink },
 
   totalPill: {
@@ -213,5 +192,4 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.stoneDeep,
   },
   totalText: { fontSize: 14, fontWeight: '900', color: colors.ink },
-  warn: { fontSize: 12, fontWeight: '800', color: colors.white, textAlign: 'center' },
 });
