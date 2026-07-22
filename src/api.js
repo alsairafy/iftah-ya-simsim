@@ -158,7 +158,7 @@ export async function fetchApiQuestions({ categoryId, level, amount = 6, retries
     return {
       key: `api|${categoryId}|${level}|${i}|${q.slice(0, 40)}`,
       level: item.difficulty || level || 'mixed',
-      ar: payload, // يُستبدل بالعربية عند طلب الترجمة
+      ar: payload, // الخدمة إنجليزية فقط — نفس النص في اللغتين
       en: payload,
       answer: options.indexOf(correct),
       fromApi: true,
@@ -166,70 +166,9 @@ export async function fetchApiQuestions({ categoryId, level, amount = 6, retries
   });
 }
 
-/* ---------------------------------------------------------------
- * الترجمة إلى العربية — MyMemory
- *
- * لا يوجد API عام يقدّم أسئلة عربية جاهزة، فنجلب الإنجليزية ونترجمها.
- * الترجمة آلية، لذلك نحتفظ بالنص الإنجليزي الأصلي ونعرضه تحت العربي.
- * ------------------------------------------------------------- */
-
-const TRANSLATE_URL = 'https://api.mymemory.translated.net/get';
-// فاصل نادر يبقى سليماً بعد الترجمة، فنترجم السؤال وخياراته في طلب واحد
-const SEP = ' ||| ';
-
-/** يترجم نصاً واحداً. يعيد null عند أي فشل بدل أن يرمي. */
-async function translateOnce(text) {
-  const url = `${TRANSLATE_URL}?q=${encodeURIComponent(text)}&langpair=en|ar`;
-  try {
-    const res = await fetchWithTimeout(url, TIMEOUT_MS);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data?.responseStatus !== 200) return null;
-    const out = data?.responseData?.translatedText;
-    return typeof out === 'string' && out.trim() ? out : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * يترجم أسئلة جاءت من الخدمة إلى العربية.
- *
- * مبدأ التصميم: الترجمة تحسين لا شرط. أي سؤال تفشل ترجمته يبقى
- * بالإنجليزية بدل أن تنهار الجولة كلها.
- *
- * onProgress(done, total) لتحديث شاشة الانتظار.
+/*
+ * ملاحظة: جُرّبت الترجمة الآلية للعربية (MyMemory) وأُزيلت عمداً.
+ * جودتها لم تكن كافية لأسئلة معرفية — تترجم About إلى «حول»،
+ * وتقرأ Principal بمعنى «مدير» لا «مبدأ»، وهذا يفسد السؤال نفسه.
+ * أسئلة هذه الخدمة تُعرض بالإنجليزية كما هي، والعربية مصدرها البنك المحلي.
  */
-export async function translateQuestions(questions, onProgress) {
-  const out = [];
-
-  for (let i = 0; i < questions.length; i++) {
-    const item = questions[i];
-    const src = item.en;
-    const joined = [src.q, ...src.o].join(SEP);
-    const raw = await translateOnce(joined);
-
-    let ar = src; // الافتراضي: نبقي الإنجليزية
-    if (raw) {
-      const parts = raw.split('|||').map((s) => s.trim());
-      // نقبلها فقط إذا رجعت بنفس عدد الأجزاء وكلها غير فارغة
-      if (parts.length === src.o.length + 1 && parts.every(Boolean)) {
-        ar = {
-          q: parts[0],
-          o: parts.slice(1),
-          f: src.f,
-          original: src.q, // النص الأصلي لعرضه تحت الترجمة
-          translated: true,
-        };
-      }
-    }
-
-    out.push({ ...item, ar });
-    if (onProgress) onProgress(i + 1, questions.length);
-
-    // تباعد بسيط احتراماً لحصة الخدمة المجانية
-    if (i < questions.length - 1) await sleep(350);
-  }
-
-  return out;
-}

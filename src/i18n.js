@@ -123,11 +123,9 @@ export const STRINGS = {
     sourceLocal: 'البنك المحلي',
     sourceLocalHint: '١٨٠ سؤال بالعربي والإنجليزي · يعمل بدون إنترنت',
     sourceApi: 'أسئلة حيّة من الإنترنت',
-    sourceApiHint: 'Open Trivia DB · أسئلة جديدة كل مرة · تُترجم للعربية آلياً · تحتاج إنترنت',
+    sourceApiHint: 'Open Trivia DB · أسئلة جديدة كل مرة · إنجليزية فقط · تحتاج إنترنت',
     apiBadge: '📡 حيّة',
-    apiEnglishNote: '⚠️ الترجمة آلية وقد تكون ركيكة أحياناً — يظهر النص الإنجليزي تحت كل سؤال',
-    translating: 'جارٍ ترجمة الأسئلة…',
-    translatingCount: (a, b) => `${a} من ${b}`,
+    apiEnglishNote: '⚠️ أسئلة هذا المصدر بالإنجليزية — للعربية استخدم البنك المحلي',
 
     /* حالات الجلب الأربع */
     loadingQuestions: 'جارٍ جلب الأسئلة…',
@@ -288,11 +286,9 @@ export const STRINGS = {
     sourceLocal: 'Built-in bank',
     sourceLocalHint: '180 questions in Arabic and English · works offline',
     sourceApi: 'Live from the internet',
-    sourceApiHint: 'Open Trivia DB · fresh questions every time · needs internet',
+    sourceApiHint: 'Open Trivia DB · fresh questions every time · English only · needs internet',
     apiBadge: '📡 Live',
-    apiEnglishNote: '⚠️ Arabic play machine-translates these questions',
-    translating: 'Translating questions…',
-    translatingCount: (a, b) => `${a} of ${b}`,
+    apiEnglishNote: '⚠️ Questions from this source are in English',
 
     loadingQuestions: 'Fetching questions…',
     loadingFrom: 'from Open Trivia Database',
