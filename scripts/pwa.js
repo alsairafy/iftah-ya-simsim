@@ -41,10 +41,28 @@ const HEAD_TAGS = `
 
 const SW_SCRIPT = `
     <script>
-      // نسجّل الـ Service Worker بعد اكتمال التحميل حتى لا نؤخّر أول ظهور للّعبة
+      // نسجّل الـ Service Worker بعد اكتمال التحميل حتى لا نؤخّر أول ظهور للّعبة،
+      // ونعيد تحميل الصفحة تلقائياً حين تتولّى نسخة أحدث — وإلا بقي اللاعب
+      // على نسخة قديمة محفوظة ولم تصله التحديثات.
       if ('serviceWorker' in navigator) {
+        // هل كانت هناك نسخة تتحكّم بالصفحة أصلاً؟ إن لم تكن، فهذا أول تثبيت
+        // ولا داعي لإعادة التحميل — نتفادى وميضاً غير مبرّر عند أول زيارة.
+        var hadController = !!navigator.serviceWorker.controller;
+        var reloading = false;
+
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!hadController) return; // أول تثبيت
+          if (reloading) return;      // مرة واحدة فقط، تفادياً لحلقة إعادة تحميل
+          reloading = true;
+          window.location.reload();
+        });
+
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js').catch(function () {});
+          navigator.serviceWorker.register('/sw.js').then(function (reg) {
+            // نسأل الخادم عن نسخة أحدث عند كل فتح، وكل ساعة أثناء اللعب
+            reg.update().catch(function () {});
+            setInterval(function () { reg.update().catch(function () {}); }, 3600000);
+          }).catch(function () {});
         });
       }
     </script>
