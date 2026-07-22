@@ -17,7 +17,7 @@ import Puppet from '../components/Puppet';
 import Shape from '../components/Shape';
 import FeltButton from '../components/FeltButton';
 import { buildRound } from '../data';
-import { fetchApiQuestions } from '../api';
+import { fetchApiQuestions, translateQuestions } from '../api';
 import { fx, play } from '../sound';
 import { useLang } from '../i18n';
 import { colors, radius, answerStyles, levelStyles, MAX_POINTS } from '../theme';
@@ -65,6 +65,7 @@ export default function RoundScreen({
   const [apiError, setApiError] = useState(null);
   const [apiQuestions, setApiQuestions] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [progress, setProgress] = useState(null); // {done, total} أثناء الترجمة
 
   const usingApi = wantsApi && !!apiQuestions;
   const questions = usingApi ? apiQuestions : built.round;
@@ -77,22 +78,36 @@ export default function RoundScreen({
     setLoad('loading');
     setApiError(null);
 
+    setProgress(null);
+
     fetchApiQuestions({ categoryId: category.id, level, amount: perRound })
+      .then(async (qs) => {
+        if (!alive) return null;
+        // الخدمة إنجليزية فقط — نترجم عند اللعب بالعربية
+        if (lang !== 'ar') return qs;
+        setProgress({ done: 0, total: qs.length });
+        const translated = await translateQuestions(qs, (done, total) => {
+          if (alive) setProgress({ done, total });
+        });
+        return alive ? translated : null;
+      })
       .then((qs) => {
-        if (!alive) return;
+        if (!alive || !qs) return;
         setApiQuestions(qs);
+        setProgress(null);
         setLoad('ready');
       })
       .catch((e) => {
         if (!alive) return;
         setApiError(e);
+        setProgress(null);
         setLoad('error');
       });
 
     return () => {
       alive = false;
     };
-  }, [wantsApi, category.id, level, perRound, attempt]);
+  }, [wantsApi, category.id, level, perRound, attempt, lang]);
 
   // نقاط الفرق تراكمية عبر المباراة — تصلنا من App وتعود إليه
   const [teams, setTeams] = useState(incomingTeams);
@@ -262,8 +277,22 @@ export default function RoundScreen({
             mood="think"
           />
           <ActivityIndicator size="large" color={colors.white} />
-          <Text style={styles.bigWhite}>{t.loadingQuestions}</Text>
-          <Text style={styles.subWhite}>{t.loadingFrom}</Text>
+          <Text style={styles.bigWhite}>
+            {progress ? t.translating : t.loadingQuestions}
+          </Text>
+          <Text style={styles.subWhite}>
+            {progress ? t.translatingCount(progress.done, progress.total) : t.loadingFrom}
+          </Text>
+          {progress && (
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${(progress.done / Math.max(1, progress.total)) * 100}%` },
+                ]}
+              />
+            </View>
+          )}
         </SafeAreaView>
       </Backdrop>
     );
@@ -430,6 +459,12 @@ export default function RoundScreen({
             <Text style={[styles.qText, { writingDirection: t.dir }]} numberOfLines={5} adjustsFontSizeToFit>
               {text.q}
             </Text>
+            {/* الترجمة آلية — نعرض الأصل الإنجليزي تحتها للرجوع إليه */}
+            {text.translated && text.original && (
+              <Text style={styles.qOriginal} numberOfLines={2}>
+                {text.original}
+              </Text>
+            )}
           </Animated.View>
 
           <View style={[styles.midRow, { flexDirection: t.row }]}>
@@ -754,6 +789,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qText: { fontSize: 20, lineHeight: 30, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  qOriginal: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.cocoaSoft,
+    textAlign: 'center',
+    marginTop: 8,
+    writingDirection: 'ltr',
+    fontStyle: 'italic',
+  },
+
+  progressTrack: {
+    width: '70%',
+    height: 10,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', backgroundColor: colors.white, borderRadius: radius.pill },
 
   midRow: { alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 26, marginTop: 4 },
   clock: {
